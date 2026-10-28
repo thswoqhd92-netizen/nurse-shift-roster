@@ -35,7 +35,7 @@
 
   const root = document.getElementById("app");
   let app = load();
-  const ui = { tab: "근무표", flash: "", busy: false, focusId: "", showAll: false, editGrid: false, query: "", showEveryRow: false, moreWarn: false, shareQuery: "", linkFallback: "", offDraft: "" };
+  const ui = { tab: "근무표", flash: "", busy: false, focusId: "", showAll: false, editGrid: false, query: "", showEveryRow: false, moreWarn: false, shareQuery: "", linkFallback: "", offDraft: "", editingYearsId: "" };
   let reportStamp = "";
   let reportCache = null;
 
@@ -293,8 +293,8 @@
             return '<option value="' + option + '"' + (kind === option ? " selected" : "") + ">" + esc(label) + "</option>";
           }).join("") +
           '</select></label>' +
-          (kind === "년차"
-            ? '<div class="year-role-edit"><input data-role-years="' + person.id + '" type="number" min="1" max="40" placeholder="?" value="' + (years || "") + '"><span>년차</span><strong class="role-live">' + esc(yearDisplay || "?년차") + "</strong></div>"
+          (kind === "년차" && ui.editingYearsId === person.id
+            ? '<div class="year-role-edit"><input data-role-years="' + person.id + '" type="number" min="1" max="40" placeholder="?" value="' + (years || "") + '"><span>년차</span></div>'
             : "") +
           '<button class="btn-tiny" type="button" data-act="up" data-id="' + person.id + '"' + (index === 0 ? " disabled" : "") + ">위로</button>" +
           '<button class="btn-tiny" type="button" data-act="down" data-id="' + person.id + '"' + (index === app.staff.length - 1 ? " disabled" : "") + ">아래로</button>" +
@@ -742,10 +742,13 @@
     else if (el.dataset.roleKind) {
       const person = findStaff(el.dataset.roleKind);
       if (person) {
-        if (el.value === "선임" || el.value === "신규") person.role = el.value;
-        else {
+        if (el.value === "선임" || el.value === "신규") {
+          person.role = el.value;
+          ui.editingYearsId = "";
+        } else {
           const kept = roleKind(person.role) === "년차" ? roleYears(person.role) : "";
           person.role = roleFromParts("년차", kept || "1");
+          ui.editingYearsId = person.id;
         }
       }
     } else if (el.dataset.staff) {
@@ -787,16 +790,14 @@
     } else if (event.target.dataset.roleYears) {
       const person = findStaff(event.target.dataset.roleYears);
       if (!person) return;
-      const value = event.target.value;
-      person.role = value === "" ? "1년차" : roleFromParts("년차", value);
-      const live = event.target.parentElement && event.target.parentElement.querySelector(".role-live");
-      if (live) live.textContent = value === "" ? "?년차" : person.role;
-      const kindSelect = document.querySelector('[data-role-kind="' + person.id + '"]');
-      if (kindSelect) {
-        const yearOpt = kindSelect.querySelector('option[value="년차"]');
-        if (yearOpt) yearOpt.textContent = value === "" ? "?년차" : person.role;
-      }
+      const value = String(event.target.value || "").trim();
+      if (!value) return;
+      person.role = roleFromParts("년차", value);
+      ui.editingYearsId = "";
       save();
+      renderEditor();
+      const select = document.querySelector('[data-role-kind="' + person.id + '"]');
+      if (select) select.focus();
     }
   }
 
