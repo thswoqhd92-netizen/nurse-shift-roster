@@ -99,13 +99,18 @@
     const num = Math.max(1, Math.min(40, Number(years) || 1));
     return num + "년차";
   }
-  function syncOffPeople() {
+  function hasOffPeople() {
+    return Array.isArray(app.offPeople) && app.offPeople.some(function (name) { return String(name || "").trim(); });
+  }
+  function renderOffPeopleCard() {
     if (!Array.isArray(app.offPeople)) app.offPeople = [];
-    const key = currentKey();
-    const req = app.requests[key] || {};
-    app.staff.forEach(function (person) {
-      if ((req[person.id] || []).length && app.offPeople.indexOf(person.name) < 0) app.offPeople.push(person.name);
-    });
+    const names = app.offPeople.map(function (name) {
+      return '<span class="off-chip">' + esc(name) + '<button type="button" data-act="remove-off-person" data-name="' + esc(name) + '" aria-label="삭제">×</button></span>';
+    }).join("");
+    return '<section class="card"><h2>오프인원</h2>' +
+      '<div class="row off-people-row"><input id="off-person-name" type="text" maxlength="20" placeholder="이름" value="' + esc(ui.offDraft) + '">' +
+      '<button class="btn" type="button" data-act="add-off-person">확인</button>' +
+      '<div class="off-people-list">' + (names || '<span class="muted-inline">이름을 넣고 확인을 누르세요</span>') + "</div></div></section>";
   }
   function load() {
     try {
@@ -265,15 +270,7 @@
   }
 
   function renderSettings() {
-    syncOffPeople();
-    const names = (app.offPeople || []).map(function (name) {
-      return '<span class="off-chip">' + esc(name) + '<button type="button" data-act="remove-off-person" data-name="' + esc(name) + '" aria-label="삭제">×</button></span>';
-    }).join("");
-    return '<section class="card"><h2>오프인원</h2>' +
-      '<div class="row off-people-row"><input id="off-person-name" type="text" maxlength="20" placeholder="이름" value="' + esc(ui.offDraft) + '">' +
-      '<button class="btn" type="button" data-act="add-off-person">확인</button>' +
-      '<div class="off-people-list">' + (names || '<span class="muted-inline">아직 없음</span>') + "</div></div></section>" +
-      '<section class="card"><h2>병동 이름</h2><div class="field"><input id="ward" type="text" maxlength="30" value="' + esc(app.wardName) + '" placeholder="예: 5병동"></div></section>' +
+    return '<section class="card"><h2>병동 이름</h2><div class="field"><input id="ward" type="text" maxlength="30" value="' + esc(app.wardName) + '" placeholder="예: 5병동"></div></section>' +
       '<section class="card"><h2>근무 시간</h2>' +
       ["D", "E", "N"].map(function (code) {
         const shift = app.shifts[code];
@@ -288,13 +285,17 @@
       app.staff.map(function (person, index) {
         const kind = roleKind(person.role);
         const years = roleYears(person.role);
+        const yearDisplay = kind === "년차" && years ? years + "년차" : "";
         return '<div class="staff-item"><label class="field who"><span>이름</span><input data-staff="' + person.id + '" data-prop="name" type="text" maxlength="20" value="' + esc(person.name) + '"></label>' +
           '<label class="field"><span>직책</span><select data-role-kind="' + person.id + '">' +
           ["선임", "신규", "년차"].map(function (option) {
-            return '<option value="' + option + '"' + (kind === option ? " selected" : "") + ">" + (option === "년차" ? "?년차" : option) + "</option>";
+            const label = option === "년차" ? (yearDisplay || "?년차") : option;
+            return '<option value="' + option + '"' + (kind === option ? " selected" : "") + ">" + esc(label) + "</option>";
           }).join("") +
           '</select></label>' +
-          (kind === "년차" ? '<label class="field years"><span>년차</span><input data-role-years="' + person.id + '" type="number" min="1" max="40" value="' + esc(years) + '"></label>' : "") +
+          (kind === "년차"
+            ? '<div class="year-role-edit"><input data-role-years="' + person.id + '" type="number" min="1" max="40" placeholder="?" value="' + (years || "") + '"><span>년차</span><strong class="role-live">' + esc(yearDisplay || "?년차") + "</strong></div>"
+            : "") +
           '<button class="btn-tiny" type="button" data-act="up" data-id="' + person.id + '"' + (index === 0 ? " disabled" : "") + ">위로</button>" +
           '<button class="btn-tiny" type="button" data-act="down" data-id="' + person.id + '"' + (index === app.staff.length - 1 ? " disabled" : "") + ">아래로</button>" +
           '<button class="btn-tiny danger" type="button" data-act="del-staff" data-id="' + person.id + '">삭제</button></div>';
@@ -338,8 +339,9 @@
   function renderRoster(days) {
     const key = currentKey();
     const report = currentReport();
+    let body = renderOffPeopleCard();
     if (!app.schedules[key]) {
-      return '<section class="card"><h2>근무표</h2><button class="btn wide" type="button" data-act="generate">' + (ui.busy ? "만드는 중" : "근무표 만들기") + "</button></section>";
+      return body + '<section class="card"><h2>근무표</h2><button class="btn wide" type="button" data-act="generate">' + (ui.busy ? "만드는 중" : "근무표 만들기") + "</button></section>";
     }
     const focus = app.staff.some(function (person) { return person.id === ui.focusId; }) ? ui.focusId : app.staff[0].id;
     const person = app.staff.find(function (item) { return item.id === focus; });
@@ -348,7 +350,7 @@
       return text.indexOf("근무가 비어 있습니다") < 0;
     });
     const shownSoft = ui.moreWarn ? soft : soft.slice(0, 8);
-    let body = '<section class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">' + app.month + '월 근무표</h2><button class="btn" type="button" data-act="generate"' + (ui.busy ? " disabled" : "") + ">" + (ui.busy ? "만드는 중" : "다시 만들기") + "</button></div>";
+    body += '<section class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">' + app.month + '월 근무표</h2><button class="btn" type="button" data-act="generate"' + (ui.busy ? " disabled" : "") + ">" + (ui.busy ? "만드는 중" : "다시 만들기") + "</button></div>";
     if (report && report.stats) {
       body += '<div class="stats" style="margin-top:12px"><div class="stat"><b>' + report.stats.weekdayAvg.toFixed(1) + '</b><span>평일 평균</span></div><div class="stat"><b>' + report.stats.weekendAvg.toFixed(1) + '</b><span>주말·공휴일</span></div><div class="stat"><b>' + report.stats.baseOffTarget + '</b><span>기본 오프</span></div></div>';
     }
@@ -605,6 +607,12 @@
   async function generate() {
     if (!app.staff.length) { ui.flash = "근무자를 먼저 추가해 주세요."; ui.tab = "인원"; return; }
     if (app.staff.some(function (person) { return !person.name.trim(); })) { ui.flash = "이름이 비어 있는 근무자가 있습니다."; ui.tab = "인원"; return; }
+    if (!hasOffPeople()) {
+      window.alert("오프인원을 먼저 넣어야합니다");
+      ui.tab = "근무표";
+      ui.flash = "오프인원을 먼저 넣어야합니다";
+      return;
+    }
     if (app.schedules[currentKey()] && !window.confirm("이번 달 근무표를 다시 만들까요? 손으로 고친 칸도 바뀝니다.")) return;
     ui.busy = true;
     renderEditor();
@@ -683,11 +691,6 @@
       const at = dates.indexOf(iso);
       if (at >= 0) dates.splice(at, 1); else dates.push(iso);
       setRequests(id, dates.sort());
-      const person = findStaff(id);
-      if (person) {
-        if (!Array.isArray(app.offPeople)) app.offPeople = [];
-        if (dates.length && app.offPeople.indexOf(person.name) < 0) app.offPeople.push(person.name);
-      }
       save();
     } else if (act === "hide-holiday") {
       if (button.dataset.extra === "1") app.extraHolidays = app.extraHolidays.filter(function (item) { return item.date !== button.dataset.iso; });
@@ -742,10 +745,7 @@
         const yearsInput = document.querySelector('[data-role-years="' + person.id + '"]');
         person.role = roleFromParts(el.value, yearsInput ? yearsInput.value : roleYears(person.role));
       }
-    } else if (el.dataset.roleYears) {
-      const person = findStaff(el.dataset.roleYears);
-      if (person) person.role = roleFromParts("년차", el.value);
-    } else if (el.dataset.staff) {
+    }     else if (el.dataset.staff) {
       const person = findStaff(el.dataset.staff);
       if (person) person[el.dataset.prop] = el.dataset.prop === "name" ? el.value.trim() : el.value;
     } else if (el.id === "restore" && el.files && el.files[0]) {
@@ -781,6 +781,19 @@
       if (box) { box.focus(); box.selectionStart = box.selectionEnd = pos; }
     } else if (event.target.id === "off-person-name") {
       ui.offDraft = event.target.value;
+    } else if (event.target.dataset.roleYears) {
+      const person = findStaff(event.target.dataset.roleYears);
+      if (!person) return;
+      const value = event.target.value;
+      person.role = value === "" ? "1년차" : roleFromParts("년차", value);
+      const live = event.target.parentElement && event.target.parentElement.querySelector(".role-live");
+      if (live) live.textContent = value === "" ? "?년차" : person.role;
+      const kindSelect = document.querySelector('[data-role-kind="' + person.id + '"]');
+      if (kindSelect) {
+        const yearOpt = kindSelect.querySelector('option[value="년차"]');
+        if (yearOpt) yearOpt.textContent = value === "" ? "?년차" : person.role;
+      }
+      save();
     }
   }
 

@@ -263,7 +263,25 @@ input:focus, select:focus { border-color: var(--teal); }
   line-height: 1;
 }
 .muted-inline { color: var(--muted); font-size: 13px; }
-.staff-item .years { width: 72px; }
+.year-role-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 4px 8px;
+  background: var(--teal-soft);
+}
+.year-role-edit input {
+  width: 52px;
+  border: 0;
+  background: transparent;
+  padding: 6px 4px;
+  text-align: center;
+  font-weight: 800;
+}
+.year-role-edit span { color: var(--muted); font-weight: 700; font-size: 13px; }
+.year-role-edit .role-live { color: var(--teal); font-size: 13px; margin-left: 4px; }
 .badge.D { background: var(--d-bg); color: var(--d); }
 .badge.E { background: var(--e-bg); color: var(--e); }
 .badge.N { background: var(--n-bg); color: var(--n); }
