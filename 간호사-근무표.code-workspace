@@ -1,0 +1,17 @@
+{
+  "folders": [
+    {
+      "path": ".",
+      "name": "간호사 근무표 자동화"
+    }
+  ],
+  "settings": {
+    "files.exclude": {
+      "**/.DS_Store": true,
+      "**/Thumbs.db": true
+    }
+  },
+  "tasks": {
+    "version": "2.0.0"
+  }
+}

@@ -1,0 +1,8 @@
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+.vscode/*.log
+__pycache__/
+.idea/
+*.tmp
