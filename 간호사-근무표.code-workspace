@@ -11,7 +11,35 @@
       "**/Thumbs.db": true
     }
   },
-  "tasks": {
-    "version": "2.0.0"
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "실행",
+        "type": "node",
+        "request": "launch",
+        "runtimeExecutable": "${env:ComSpec}",
+        "runtimeArgs": ["/c", "실행.bat"],
+        "cwd": "${workspaceFolder}",
+        "console": "integratedTerminal",
+        "internalConsoleOptions": "neverOpen"
+      },
+      {
+        "name": "열기",
+        "type": "node",
+        "request": "launch",
+        "runtimeExecutable": "${env:ComSpec}",
+        "runtimeArgs": ["/c", "열기.bat"],
+        "cwd": "${workspaceFolder}",
+        "console": "integratedTerminal",
+        "internalConsoleOptions": "neverOpen"
+      },
+      {
+        "name": "브라우저로 열기",
+        "type": "chrome",
+        "request": "launch",
+        "file": "${workspaceFolder}/index.html"
+      }
+    ]
   }
 }
