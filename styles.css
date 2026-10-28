@@ -240,9 +240,10 @@ input:focus, select:focus { border-color: var(--teal); }
 .shift-label.D { color: var(--d); }
 .shift-label.E { color: var(--e); }
 .shift-label.N { color: var(--n); }
-.off-people-row { align-items: flex-start; }
-.off-people-row input { flex: 0 1 140px; }
-.off-people-list { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 140px; }
+.off-people-row { align-items: center; }
+.off-people-row input[type="text"] { flex: 0 1 140px; }
+.off-people-row input[type="date"] { flex: 0 1 160px; }
+.off-people-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .off-chip {
   display: inline-flex;
   align-items: center;

@@ -35,7 +35,7 @@
 
   const root = document.getElementById("app");
   let app = load();
-  const ui = { tab: "근무표", flash: "", busy: false, focusId: "", showAll: false, editGrid: false, query: "", showEveryRow: false, moreWarn: false, shareQuery: "", linkFallback: "", offDraft: "", editingYearsId: "" };
+  const ui = { tab: "근무표", flash: "", busy: false, focusId: "", showAll: false, editGrid: false, query: "", showEveryRow: false, moreWarn: false, shareQuery: "", linkFallback: "", offDraft: "", offDateDraft: "", editingYearsId: "" };
   let reportStamp = "";
   let reportCache = null;
 
@@ -99,18 +99,65 @@
     const num = Math.max(1, Math.min(40, Number(years) || 1));
     return num + "년차";
   }
+  function normalizeOffPeople() {
+    if (!Array.isArray(app.offPeople)) app.offPeople = [];
+    app.offPeople = app.offPeople.map(function (item) {
+      if (typeof item === "string") return { name: item, date: "" };
+      return { name: String((item && item.name) || "").trim(), date: String((item && item.date) || "").trim() };
+    }).filter(function (item) { return item.name; });
+  }
   function hasOffPeople() {
-    return Array.isArray(app.offPeople) && app.offPeople.some(function (name) { return String(name || "").trim(); });
+    normalizeOffPeople();
+    return app.offPeople.some(function (item) { return item.name && item.date; });
+  }
+  function findStaffByName(name) {
+    const target = String(name || "").trim();
+    return app.staff.find(function (person) { return person.name.trim() === target; });
+  }
+  function lockOffRequest(name, date) {
+    const person = findStaffByName(name);
+    if (!person || !date) return false;
+    const dates = requestsFor(person.id);
+    if (dates.indexOf(date) < 0) {
+      dates.push(date);
+      setRequests(person.id, dates.sort());
+    }
+    return true;
+  }
+  function unlockOffRequest(name, date) {
+    const person = findStaffByName(name);
+    if (!person || !date) return;
+    const dates = requestsFor(person.id).filter(function (iso) { return iso !== date; });
+    setRequests(person.id, dates);
+  }
+  function applyAllOffPeople() {
+    normalizeOffPeople();
+    app.offPeople.forEach(function (item) {
+      if (item.name && item.date) lockOffRequest(item.name, item.date);
+    });
+  }
+  function defaultOffDate() {
+    if (ui.offDateDraft) return ui.offDateDraft;
+    const today = todayIso();
+    if (today.indexOf(currentKey()) === 0) return today;
+    return isoOf(app.year, app.month, 1);
+  }
+  function formatOffDate(iso) {
+    if (!iso || iso.length < 10) return iso || "";
+    return Number(iso.slice(5, 7)) + "/" + Number(iso.slice(8, 10));
   }
   function renderOffPeopleCard() {
-    if (!Array.isArray(app.offPeople)) app.offPeople = [];
-    const names = app.offPeople.map(function (name) {
-      return '<span class="off-chip">' + esc(name) + '<button type="button" data-act="remove-off-person" data-name="' + esc(name) + '" aria-label="삭제">×</button></span>';
+    normalizeOffPeople();
+    const chips = app.offPeople.map(function (item, index) {
+      const label = item.date ? esc(item.name) + " · " + esc(formatOffDate(item.date)) : esc(item.name);
+      return '<span class="off-chip">' + label + '<button type="button" data-act="remove-off-person" data-index="' + index + '" aria-label="삭제">×</button></span>';
     }).join("");
     return '<section class="card"><h2>오프인원</h2>' +
-      '<div class="row off-people-row"><input id="off-person-name" type="text" maxlength="20" placeholder="이름" value="' + esc(ui.offDraft) + '">' +
-      '<button class="btn" type="button" data-act="add-off-person">확인</button>' +
-      '<div class="off-people-list">' + (names || '<span class="muted-inline">이름을 넣고 확인을 누르세요</span>') + "</div></div></section>";
+      '<div class="row off-people-row">' +
+      '<input id="off-person-name" type="text" maxlength="20" placeholder="이름" value="' + esc(ui.offDraft) + '">' +
+      '<input id="off-person-date" type="date" value="' + esc(defaultOffDate()) + '">' +
+      '<button class="btn" type="button" data-act="add-off-person">확인</button></div>' +
+      '<div class="off-people-list">' + (chips || '<span class="muted-inline">이름과 날짜를 넣고 확인을 누르세요</span>') + "</div></section>";
   }
   function load() {
     try {
@@ -345,28 +392,15 @@
     }
     const focus = app.staff.some(function (person) { return person.id === ui.focusId; }) ? ui.focusId : app.staff[0].id;
     const person = app.staff.find(function (item) { return item.id === focus; });
-    const hard = report ? report.hard : [];
-    const soft = (report ? report.soft : []).filter(function (text) {
-      return text.indexOf("근무가 비어 있습니다") < 0;
-    });
-    const shownSoft = ui.moreWarn ? soft : soft.slice(0, 8);
-    body += '<section class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">' + app.month + '월 근무표</h2><button class="btn" type="button" data-act="generate"' + (ui.busy ? " disabled" : "") + ">" + (ui.busy ? "만드는 중" : "다시 만들기") + "</button></div>";
-    if (report && report.stats) {
-      body += '<div class="stats" style="margin-top:12px"><div class="stat"><b>' + report.stats.weekdayAvg.toFixed(1) + '</b><span>평일 평균</span></div><div class="stat"><b>' + report.stats.weekendAvg.toFixed(1) + '</b><span>주말·공휴일</span></div><div class="stat"><b>' + report.stats.baseOffTarget + '</b><span>기본 오프</span></div></div>';
-    }
-    if (hard.length) body += '<div class="bad"><ul>' + hard.slice(0, 12).map(function (text) { return "<li>" + esc(text) + "</li>"; }).join("") + "</ul></div>";
-    if (shownSoft.length) {
-      body += '<div class="warn"><ul>' + shownSoft.map(function (text) { return "<li>" + esc(text) + "</li>"; }).join("") + "</ul>" +
-        (soft.length > 8 ? '<button class="btn-tiny" type="button" data-act="more-warn">' + (ui.moreWarn ? "접기" : "외 " + (soft.length - 8) + "건 더 보기") + "</button>" : "") + "</div>";
-    }
-    body += "</section>";
-    body += '<section class="card roster-card"><div class="person-head"><h2 style="margin:0">' + (ui.showAll ? "전체 달력" : "개인 달력") + '</h2><button class="btn-tiny" type="button" data-act="toggle-all">' + (ui.showAll ? "개인 달력" : "전체 표") + "</button></div>" + legend() +
+    body += '<section class="card roster-card"><div class="person-head"><h2 style="margin:0">' + (ui.showAll ? "전체 달력" : "개인 달력") + '</h2>' +
+      '<div class="row"><button class="btn-tiny" type="button" data-act="toggle-all">' + (ui.showAll ? "개인 달력" : "전체 표") + '</button>' +
+      '<button class="btn-tiny" type="button" data-act="generate"' + (ui.busy ? " disabled" : "") + ">" + (ui.busy ? "만드는 중" : "다시 만들기") + "</button></div></div>" +
       '<div class="chips">' + app.staff.map(function (item) {
         return '<button class="chip' + (!ui.showAll && item.id === focus ? " on" : "") + '" type="button" data-act="focus" data-id="' + item.id + '">' + esc(item.name) + "</button>";
       }).join("") + "</div>";
     if (!ui.showAll && person) {
       const row = app.schedules[key][person.id] || [];
-      body += '<div class="person-head"><div><strong>' + esc(person.name) + '</strong> <span class="role-tag">' + esc(person.role) + '</span><div class="sub">' + esc(personSummary(person, report, days)) + "</div></div></div>";
+      body += '<div class="person-head"><div><strong>' + esc(person.name) + '</strong> <span class="role-tag">' + esc(person.role) + "</span></div></div>";
       body += calendarHtml(days, function (day, isToday) {
         const shift = row[day.day - 1] || "OFF";
         const requested = requestsFor(person.id).indexOf(day.iso) >= 0 && shift === "OFF";
@@ -614,6 +648,7 @@
       return;
     }
     if (app.schedules[currentKey()] && !window.confirm("이번 달 근무표를 다시 만들까요? 손으로 고친 칸도 바뀝니다.")) return;
+    applyAllOffPeople();
     ui.busy = true;
     renderEditor();
     try {
@@ -670,20 +705,34 @@
     } else if (act === "up") { moveStaff(id, -1); save(); }
     else if (act === "down") { moveStaff(id, 1); save(); }
     else if (act === "add-off-person") {
-      const box = document.getElementById("off-person-name");
-      const name = ((box && box.value) || ui.offDraft || "").trim();
+      const nameBox = document.getElementById("off-person-name");
+      const dateBox = document.getElementById("off-person-date");
+      const name = ((nameBox && nameBox.value) || ui.offDraft || "").trim();
+      const date = ((dateBox && dateBox.value) || ui.offDateDraft || "").trim();
       if (!name) { ui.flash = "이름을 입력해 주세요."; }
-      else {
-        if (!Array.isArray(app.offPeople)) app.offPeople = [];
-        if (app.offPeople.indexOf(name) < 0) app.offPeople.push(name);
+      else if (!date) { ui.flash = "날짜를 선택해 주세요."; window.alert("날짜를 선택해 주세요."); }
+      else if (!findStaffByName(name)) {
+        ui.flash = "인원 탭에 있는 이름을 입력해 주세요.";
+        window.alert("인원 탭에 있는 이름을 입력해 주세요.");
+      } else {
+        normalizeOffPeople();
+        const exists = app.offPeople.some(function (item) { return item.name === name && item.date === date; });
+        if (!exists) app.offPeople.push({ name: name, date: date });
+        lockOffRequest(name, date);
         ui.offDraft = "";
-        if (box) box.value = "";
+        ui.offDateDraft = date;
+        if (nameBox) nameBox.value = "";
         save();
       }
     } else if (act === "remove-off-person") {
-      const name = button.dataset.name || "";
-      app.offPeople = (app.offPeople || []).filter(function (item) { return item !== name; });
-      save();
+      normalizeOffPeople();
+      const index = Number(button.dataset.index);
+      const item = app.offPeople[index];
+      if (item) {
+        unlockOffRequest(item.name, item.date);
+        app.offPeople.splice(index, 1);
+        save();
+      }
     } else if (act === "pick" || act === "focus") { ui.focusId = id; ui.showAll = act === "focus" ? false : ui.showAll; }
     else if (act === "toggle-off") {
       const dates = requestsFor(id);
@@ -787,6 +836,8 @@
       if (box) { box.focus(); box.selectionStart = box.selectionEnd = pos; }
     } else if (event.target.id === "off-person-name") {
       ui.offDraft = event.target.value;
+    } else if (event.target.id === "off-person-date") {
+      ui.offDateDraft = event.target.value;
     } else if (event.target.dataset.roleYears) {
       const person = findStaff(event.target.dataset.roleYears);
       if (!person) return;
