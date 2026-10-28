@@ -742,10 +742,13 @@
     else if (el.dataset.roleKind) {
       const person = findStaff(el.dataset.roleKind);
       if (person) {
-        const yearsInput = document.querySelector('[data-role-years="' + person.id + '"]');
-        person.role = roleFromParts(el.value, yearsInput ? yearsInput.value : roleYears(person.role));
+        if (el.value === "선임" || el.value === "신규") person.role = el.value;
+        else {
+          const kept = roleKind(person.role) === "년차" ? roleYears(person.role) : "";
+          person.role = roleFromParts("년차", kept || "1");
+        }
       }
-    }     else if (el.dataset.staff) {
+    } else if (el.dataset.staff) {
       const person = findStaff(el.dataset.staff);
       if (person) person[el.dataset.prop] = el.dataset.prop === "name" ? el.value.trim() : el.value;
     } else if (el.id === "restore" && el.files && el.files[0]) {
