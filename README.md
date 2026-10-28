@@ -13,10 +13,11 @@
 
 Python이 없어도 `index.html` 로 바로 열립니다.
 
-### 웹에서 바로 열기
+### 웹에서 바로 열기 (사무실 PC 포함)
 
-GitHub Pages가 켜져 있으면 저장소 페이지의 **Pages** 주소로 열 수 있습니다.
-(각 PC·휴대폰 브라우저마다 근무표 데이터가 따로 저장됩니다.)
+https://thswoqhd92-netizen.github.io/nurse-shift-roster/
+
+브라우저만 있으면 됩니다. 각 PC·휴대폰마다 근무표 데이터는 따로 저장됩니다.
 
 ## 공유
 

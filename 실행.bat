@@ -10,8 +10,8 @@ if errorlevel 1 goto no_python
 
 powershell -NoProfile -Command "try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 1 'http://127.0.0.1:8765/' | Out-Null; exit 0 } catch { exit 1 }" >nul 2>nul
 if errorlevel 1 (
-  start "간호사 근무표" /min cmd /c "cd /d \"%~dp0\" && python -m http.server %PORT% --bind 127.0.0.1"
-  timeout /t 1 /nobreak >nul
+  start "간호사 근무표" /min /D "%~dp0" python -m http.server %PORT% --bind 127.0.0.1
+  powershell -NoProfile -Command "Start-Sleep -Seconds 1" >nul
 )
 
 start "" "%URL%"
