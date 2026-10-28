@@ -1,7 +1,13 @@
 (function () {
   const KEY = "nurse-roster-v1";
-  const ROLES = ["선임", "5년차", "4년차", "3년차", "2년차", "1년차", "신규"];
   const DOW = ["일", "월", "화", "수", "목", "금", "토"];
+  const TABS = [
+    { id: "근무표", tone: "roster" },
+    { id: "인원", tone: "staff" },
+    { id: "오프", tone: "off" },
+    { id: "설정", tone: "settings" },
+    { id: "공유", tone: "share" }
+  ];
   const HOLIDAYS = {
     "2025-01-01": "신정", "2025-01-27": "임시공휴일", "2025-01-28": "설날", "2025-01-29": "설날", "2025-01-30": "설날",
     "2025-03-01": "삼일절", "2025-03-03": "대체공휴일", "2025-05-05": "어린이날·부처님오신날", "2025-05-06": "대체공휴일",
@@ -29,7 +35,7 @@
 
   const root = document.getElementById("app");
   let app = load();
-  const ui = { tab: "설정", flash: "", busy: false, focusId: "", showAll: false, editGrid: false, query: "", showEveryRow: false, moreWarn: false, shareQuery: "", linkFallback: "" };
+  const ui = { tab: "근무표", flash: "", busy: false, focusId: "", showAll: false, editGrid: false, query: "", showEveryRow: false, moreWarn: false, shareQuery: "", linkFallback: "", offDraft: "" };
   let reportStamp = "";
   let reportCache = null;
 
@@ -47,7 +53,9 @@
   }
   function mark(shift, requested) {
     if (requested) return "신청";
-    if (shift === "D" || shift === "E" || shift === "N") return shift;
+    if (shift === "D") return "D";
+    if (shift === "E") return "E";
+    if (shift === "N") return "N";
     return "오프";
   }
   function shiftName(code) {
@@ -73,9 +81,31 @@
       weekdayTarget: "",
       weekendTarget: "",
       staff: [],
+      offPeople: [],
       requests: {},
       schedules: {}
     };
+  }
+  function roleKind(role) {
+    if (role === "선임" || role === "신규") return role;
+    return "년차";
+  }
+  function roleYears(role) {
+    const match = String(role || "").match(/^(\d+)년차$/);
+    return match ? match[1] : "1";
+  }
+  function roleFromParts(kind, years) {
+    if (kind === "선임" || kind === "신규") return kind;
+    const num = Math.max(1, Math.min(40, Number(years) || 1));
+    return num + "년차";
+  }
+  function syncOffPeople() {
+    if (!Array.isArray(app.offPeople)) app.offPeople = [];
+    const key = currentKey();
+    const req = app.requests[key] || {};
+    app.staff.forEach(function (person) {
+      if ((req[person.id] || []).length && app.offPeople.indexOf(person.name) < 0) app.offPeople.push(person.name);
+    });
   }
   function load() {
     try {
@@ -234,84 +264,59 @@
     }).join("");
   }
 
-  function renderSettings(days) {
-    const base = days.filter(function (day) { return day.weekend; }).length;
-    const prefix = currentKey();
-    const active = holidayMap(app.year);
-    const rows = [];
-    Object.keys(HOLIDAYS).forEach(function (iso) {
-      if (iso.indexOf(prefix) === 0) rows.push({ iso: iso, name: HOLIDAYS[iso], on: !!active[iso], extra: false });
-    });
-    app.extraHolidays.forEach(function (item) {
-      if (item.date && item.date.indexOf(prefix) === 0) rows.push({ iso: item.date, name: item.name || "휴무", on: true, extra: true });
-    });
-    rows.sort(function (a, b) { return a.iso < b.iso ? -1 : 1; });
-    const prev = app.month === 1 ? monthKey(app.year - 1, 12) : monthKey(app.year, app.month - 1);
-    return '<section class="card"><h2>만드는 순서</h2><p class="help">인원을 넣고, 오프를 먼저 신청한 뒤 근무표를 만듭니다. 만든 표는 이 브라우저에 자동으로 저장되고, 다음 달은 지난달 마지막 근무를 이어서 계산합니다.</p>' +
-      '<div class="field"><span>병동 이름</span><input id="ward" type="text" maxlength="30" value="' + esc(app.wardName) + '" placeholder="예: 5병동"></div></section>' +
-      '<section class="card"><h2>근무 시간</h2><p class="help">시간은 달력에 보여 주는 용도입니다. 이브닝 다음 날 데이 금지, 나이트 다음 날 데이·이브닝 금지는 시간 대신 이 규칙으로 지킵니다.</p>' +
+  function renderSettings() {
+    syncOffPeople();
+    const names = (app.offPeople || []).map(function (name) {
+      return '<span class="off-chip">' + esc(name) + '<button type="button" data-act="remove-off-person" data-name="' + esc(name) + '" aria-label="삭제">×</button></span>';
+    }).join("");
+    return '<section class="card"><h2>오프인원</h2>' +
+      '<div class="row off-people-row"><input id="off-person-name" type="text" maxlength="20" placeholder="이름" value="' + esc(ui.offDraft) + '">' +
+      '<button class="btn" type="button" data-act="add-off-person">확인</button>' +
+      '<div class="off-people-list">' + (names || '<span class="muted-inline">아직 없음</span>') + "</div></div></section>" +
+      '<section class="card"><h2>병동 이름</h2><div class="field"><input id="ward" type="text" maxlength="30" value="' + esc(app.wardName) + '" placeholder="예: 5병동"></div></section>' +
+      '<section class="card"><h2>근무 시간</h2>' +
       ["D", "E", "N"].map(function (code) {
         const shift = app.shifts[code];
-        return '<div class="row" style="margin-bottom:8px"><strong style="width:64px">' + shiftName(code) + '</strong>' +
+        return '<div class="row" style="margin-bottom:8px"><strong class="shift-label ' + code + '">' + shiftName(code) + "</strong>" +
           '<input data-shift="' + code + '" data-part="start" type="time" value="' + esc(shift.start) + '">' +
           '<input data-shift="' + code + '" data-part="end" type="time" value="' + esc(shift.end) + '"></div>';
-      }).join("") + "</section>" +
-      '<section class="card"><h2>하루 인원 목표</h2><p class="help">비워 두면 인원과 오프 수에 맞춰 평일이 주말·공휴일보다 많게 잡습니다. 하루 합계가 5명보다 적으면 근무표에 부족으로 표시합니다. 선임 1명, 5년차 1명은 하루 전체에서 한 번씩 들어가게 맞춥니다.</p>' +
-      '<div class="grid-2"><label class="field"><span>평일 목표 인원</span><input id="wdtarget" type="number" min="1" max="999" placeholder="자동" value="' + esc(app.weekdayTarget) + '"></label>' +
-      '<label class="field"><span>주말·공휴일 목표 인원</span><input id="wetarget" type="number" min="1" max="999" placeholder="자동" value="' + esc(app.weekendTarget) + '"></label></div></section>' +
-      '<section class="card"><h2>' + app.month + "월 쉬는 날 " + base + '일</h2><p class="help">기본 오프는 신청 오프를 빼고 이 날 수와 같습니다. 토·일·공휴일에만 몰지 않고, 평일과 주말이 사람마다 비슷하게 나뉩니다. 2025–2028년 공휴일을 넣어 두었습니다.</p>' +
-      (app.schedules[prev] ? '<div class="ok">' + prev.slice(5) + "월 근무표가 있어 이번 달은 그 마지막 근무를 잇습니다.</div>" : '<div class="note">지난달 근무표가 없습니다. 이번 달은 1일부터 새로 계산합니다.</div>') +
-      rows.map(function (row) {
-        return '<div class="holi"><div style="flex:1"><b>' + row.iso.slice(8) + "일</b> " + esc(row.name) + "</div>" +
-          (row.on
-            ? '<button class="btn-tiny danger" type="button" data-act="hide-holiday" data-iso="' + row.iso + '" data-extra="' + (row.extra ? "1" : "0") + '">빼기</button>'
-            : '<button class="btn-tiny" type="button" data-act="restore-holiday" data-iso="' + row.iso + '">다시 넣기</button>') +
-          "</div>";
-      }).join("") +
-      '<div class="row" style="margin-top:10px"><input id="holidate" type="date"><input id="holiname" type="text" maxlength="20" placeholder="휴무 이름"><button class="btn" type="button" data-act="add-holiday">추가</button></div></section>' +
-      '<section class="card"><button class="btn danger" type="button" data-act="reset">이 브라우저의 데이터 지우기</button></section>';
+      }).join("") + "</section>";
   }
 
   function renderStaff() {
     return '<section class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">근무자 ' + app.staff.length + '명</h2><button class="btn" type="button" data-act="add-staff">추가</button></div>' +
-      '<p class="help">한 사람당 직책은 하나입니다. 1명부터 999명까지 넣을 수 있습니다.</p>' +
-      (app.staff.length ? "" : '<button class="btn-ghost" type="button" data-act="sample">예시 12명 넣기</button>') +
       app.staff.map(function (person, index) {
+        const kind = roleKind(person.role);
+        const years = roleYears(person.role);
         return '<div class="staff-item"><label class="field who"><span>이름</span><input data-staff="' + person.id + '" data-prop="name" type="text" maxlength="20" value="' + esc(person.name) + '"></label>' +
-          '<label class="field"><span>직책</span><select data-staff="' + person.id + '" data-prop="role">' +
-          ROLES.map(function (role) { return '<option' + (role === person.role ? " selected" : "") + ">" + role + "</option>"; }).join("") +
-          '</select></label><button class="btn-tiny" type="button" data-act="up" data-id="' + person.id + '"' + (index === 0 ? " disabled" : "") + '>위로</button>' +
-          '<button class="btn-tiny" type="button" data-act="down" data-id="' + person.id + '"' + (index === app.staff.length - 1 ? " disabled" : "") + '>아래로</button>' +
+          '<label class="field"><span>직책</span><select data-role-kind="' + person.id + '">' +
+          ["선임", "신규", "년차"].map(function (option) {
+            return '<option value="' + option + '"' + (kind === option ? " selected" : "") + ">" + (option === "년차" ? "?년차" : option) + "</option>";
+          }).join("") +
+          '</select></label>' +
+          (kind === "년차" ? '<label class="field years"><span>년차</span><input data-role-years="' + person.id + '" type="number" min="1" max="40" value="' + esc(years) + '"></label>' : "") +
+          '<button class="btn-tiny" type="button" data-act="up" data-id="' + person.id + '"' + (index === 0 ? " disabled" : "") + ">위로</button>" +
+          '<button class="btn-tiny" type="button" data-act="down" data-id="' + person.id + '"' + (index === app.staff.length - 1 ? " disabled" : "") + ">아래로</button>" +
           '<button class="btn-tiny danger" type="button" data-act="del-staff" data-id="' + person.id + '">삭제</button></div>';
       }).join("") +
-      (app.staff.length ? '<div style="margin-top:10px"><button class="btn-ghost" type="button" data-act="sample">예시 인원으로 바꾸기</button></div>' : "") +
       "</section>";
   }
 
   function renderOff(days) {
-    if (!app.staff.length) return '<section class="card"><h2>오프 신청</h2><p class="help">먼저 근무자를 추가해 주세요.</p></section>';
+    if (!app.staff.length) return '<section class="card"><h2>오프 신청</h2><p class="help">먼저 인원 탭에서 근무자를 추가해 주세요.</p></section>';
     const selected = app.staff.some(function (person) { return person.id === ui.focusId; }) ? ui.focusId : app.staff[0].id;
     const person = app.staff.find(function (item) { return item.id === selected; });
     const mine = requestsFor(selected);
-    const base = weekendCount();
-    return '<section class="card"><h2>오프 신청</h2><p class="help">' + app.month + "월 기본 오프는 " + base + "일입니다. " + esc(person.name) + " 님은 신청 " + mine.length + "일 외에 기본 오프 " + base + "일이 더 들어갑니다. 선임끼리, 5년차끼리는 같은 날 모두 오프가 되지 않게 나눠 주세요.</p>" +
+    return '<section class="card"><h2>오프 신청 · ' + esc(person.name) + "</h2>" +
       '<div class="chips">' + app.staff.map(function (item) {
-        return '<button class="chip' + (item.id === selected ? " on" : "") + '" type="button" data-act="pick" data-id="' + item.id + '">' + esc(item.name) + " · " + esc(item.role) + "</button>";
+        return '<button class="chip' + (item.id === selected ? " on" : "") + '" type="button" data-act="pick" data-id="' + item.id + '">' + esc(item.name) + "</button>";
       }).join("") + "</div>" +
       calendarHtml(days, function (day, isToday) {
         const on = mine.indexOf(day.iso) >= 0;
-        const gap = roleRequestGap(day.iso);
-        const cls = ["day", day.dow === 0 ? "sun" : "", day.dow === 6 ? "sat" : "", day.holiday ? "holi" : "", on ? "on" : "", isToday ? "today" : ""].join(" ");
-        return '<button class="' + cls + '" type="button" data-act="toggle-off" data-id="' + selected + '" data-iso="' + day.iso + '"><span class="n">' + day.day + '</span>' +
-          (on ? '<span class="badge REQ">신청</span>' : '<span class="badge OFF"> </span>') +
-          "<small>" + esc(day.holiday || (gap.length ? "확인" : "")) + "</small></button>";
+        const cls = ["day", "readable", day.dow === 0 ? "sun" : "", day.dow === 6 ? "sat" : "", day.holiday ? "holi" : "", on ? "on" : "", isToday ? "today" : ""].join(" ");
+        return '<button class="' + cls + '" type="button" data-act="toggle-off" data-id="' + selected + '" data-iso="' + day.iso + '"><span class="n">' + day.day + "</span>" +
+          (on ? '<span class="badge REQ">신청</span>' : "") + "</button>";
       }) +
-      (mine.map(function (iso) { return roleRequestGap(iso).map(function (text) { return iso.slice(8) + "일 " + text; }).join(""); }).filter(Boolean).length
-        ? '<div class="warn">같은 직책이 모두 쉰 날이 있습니다. 신청은 그대로 두고, 근무표에 인원 부족으로 표시합니다.<ul>' +
-          mine.map(function (iso) {
-            return roleRequestGap(iso).map(function (text) { return "<li>" + Number(iso.slice(8)) + "일 " + esc(text) + "</li>"; }).join("");
-          }).join("") + "</ul></div>"
-        : '<div class="ok">선택한 신청으로는 선임과 5년차가 같은 날 모두 빠지지 않습니다.</div>') +
       "</section>";
   }
 
@@ -334,25 +339,26 @@
     const key = currentKey();
     const report = currentReport();
     if (!app.schedules[key]) {
-      return '<section class="card"><h2>근무표</h2><p class="help">오프 신청을 먼저 반영한 뒤 만듭니다.</p><button class="btn wide" type="button" data-act="generate">' + (ui.busy ? "만드는 중" : "근무표 만들기") + "</button></section>";
+      return '<section class="card"><h2>근무표</h2><button class="btn wide" type="button" data-act="generate">' + (ui.busy ? "만드는 중" : "근무표 만들기") + "</button></section>";
     }
     const focus = app.staff.some(function (person) { return person.id === ui.focusId; }) ? ui.focusId : app.staff[0].id;
     const person = app.staff.find(function (item) { return item.id === focus; });
     const hard = report ? report.hard : [];
-    const soft = report ? report.soft : [];
+    const soft = (report ? report.soft : []).filter(function (text) {
+      return text.indexOf("근무가 비어 있습니다") < 0;
+    });
     const shownSoft = ui.moreWarn ? soft : soft.slice(0, 8);
     let body = '<section class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">' + app.month + '월 근무표</h2><button class="btn" type="button" data-act="generate"' + (ui.busy ? " disabled" : "") + ">" + (ui.busy ? "만드는 중" : "다시 만들기") + "</button></div>";
     if (report && report.stats) {
-      body += '<div class="stats" style="margin-top:12px"><div class="stat"><b>' + report.stats.weekdayAvg.toFixed(1) + '</b><span>평일 평균 인원</span></div><div class="stat"><b>' + report.stats.weekendAvg.toFixed(1) + '</b><span>주말·공휴일 평균</span></div><div class="stat"><b>' + report.stats.baseOffTarget + '</b><span>기본 오프</span></div></div>';
+      body += '<div class="stats" style="margin-top:12px"><div class="stat"><b>' + report.stats.weekdayAvg.toFixed(1) + '</b><span>평일 평균</span></div><div class="stat"><b>' + report.stats.weekendAvg.toFixed(1) + '</b><span>주말·공휴일</span></div><div class="stat"><b>' + report.stats.baseOffTarget + '</b><span>기본 오프</span></div></div>';
     }
-    if (hard.length) body += '<div class="bad">규칙을 벗어난 칸이 있습니다.<ul>' + hard.slice(0, 12).map(function (text) { return "<li>" + esc(text) + "</li>"; }).join("") + "</ul></div>";
-    else body += '<div class="ok">신청 오프, 나이트 개수, 연속 근무, 근무 순서는 지켰습니다.</div>';
+    if (hard.length) body += '<div class="bad"><ul>' + hard.slice(0, 12).map(function (text) { return "<li>" + esc(text) + "</li>"; }).join("") + "</ul></div>";
     if (shownSoft.length) {
-      body += '<div class="warn">인원이 부족한 날이 있으면 아래에 표시합니다. 신청 오프는 그대로 두었습니다.<ul>' + shownSoft.map(function (text) { return "<li>" + esc(text) + "</li>"; }).join("") + "</ul>" +
+      body += '<div class="warn"><ul>' + shownSoft.map(function (text) { return "<li>" + esc(text) + "</li>"; }).join("") + "</ul>" +
         (soft.length > 8 ? '<button class="btn-tiny" type="button" data-act="more-warn">' + (ui.moreWarn ? "접기" : "외 " + (soft.length - 8) + "건 더 보기") + "</button>" : "") + "</div>";
     }
     body += "</section>";
-    body += '<section class="card"><div class="person-head"><h2 style="margin:0">' + (ui.showAll ? "전체 달력" : "개인 달력") + '</h2><button class="btn-tiny" type="button" data-act="toggle-all">' + (ui.showAll ? "개인 달력" : "전체 표") + "</button></div>" + legend() +
+    body += '<section class="card roster-card"><div class="person-head"><h2 style="margin:0">' + (ui.showAll ? "전체 달력" : "개인 달력") + '</h2><button class="btn-tiny" type="button" data-act="toggle-all">' + (ui.showAll ? "개인 달력" : "전체 표") + "</button></div>" + legend() +
       '<div class="chips">' + app.staff.map(function (item) {
         return '<button class="chip' + (!ui.showAll && item.id === focus ? " on" : "") + '" type="button" data-act="focus" data-id="' + item.id + '">' + esc(item.name) + "</button>";
       }).join("") + "</div>";
@@ -362,16 +368,14 @@
       body += calendarHtml(days, function (day, isToday) {
         const shift = row[day.day - 1] || "OFF";
         const requested = requestsFor(person.id).indexOf(day.iso) >= 0 && shift === "OFF";
-        const cls = ["day", day.dow === 0 ? "sun" : "", day.dow === 6 ? "sat" : "", day.holiday ? "holi" : "", isToday ? "today" : ""].join(" ");
-        return '<div class="' + cls + '"><span class="n">' + day.day + '</span><span class="badge ' + (requested ? "REQ" : shift) + '">' + mark(shift, requested) + "</span><small>" + esc(day.holiday) + "</small></div>";
+        const cls = ["day", "readable", day.dow === 0 ? "sun" : "", day.dow === 6 ? "sat" : "", day.holiday ? "holi" : "", isToday ? "today" : ""].join(" ");
+        return '<div class="' + cls + '"><span class="n">' + day.day + '</span><span class="badge big ' + (requested ? "REQ" : shift) + '">' + mark(shift, requested) + "</span></div>";
       });
     }
     if (ui.showAll) {
-      body += '<p class="help">각 날짜 안에 그날의 근무자 이름이 모두 들어갑니다. 이름을 누르면 그 사람 달력만 보입니다.</p>';
       body += '<div class="cal-scroll">' + calendarHtml(days, function (day, isToday) {
-        const cls = ["day", "all", day.dow === 0 ? "sun" : "", day.dow === 6 ? "sat" : "", day.holiday ? "holi" : "", isToday ? "today" : ""].join(" ");
-        return '<div class="' + cls + '"><div class="day-top"><span class="n">' + day.day + "</span>" +
-          (day.holiday ? "<small>" + esc(day.holiday) + "</small>" : "") + "</div>" +
+        const cls = ["day", "all", "readable", day.dow === 0 ? "sun" : "", day.dow === 6 ? "sat" : "", day.holiday ? "holi" : "", isToday ? "today" : ""].join(" ");
+        return '<div class="' + cls + '"><div class="day-top"><span class="n">' + day.day + "</span></div>" +
           namesForDay(app.staff, app.schedules[key], app.requests[key] || {}, day, day.day - 1, "focus") + "</div>";
       }, "all") + "</div>";
       body += '<button class="btn-tiny" type="button" data-act="edit-grid" style="margin-top:8px">' + (ui.editGrid ? "수정 표 접기" : "근무 칸 수정") + "</button>";
@@ -382,7 +386,6 @@
       if (trimmed) rows = rows.slice(0, 20);
       if (ui.editGrid) {
       body += '<div class="row" style="margin-top:8px"><input id="find" type="search" placeholder="이름 검색" value="' + esc(ui.query) + '"></div>';
-      body += '<p class="help">칸을 누르면 오프 → 데이 → 이브닝 → 나이트 순서로 바뀝니다. 규칙은 바꾼 뒤에도 다시 확인합니다.</p>';
       body += '<div class="table-scroll"><table><thead><tr><th>이름</th>' + days.map(function (day) {
         const cls = day.iso === todayIso() ? "todayh" : day.dow === 0 || day.holiday ? "sunh" : day.dow === 6 ? "sath" : "";
         return '<th class="' + cls + '">' + day.day + "</th>";
@@ -432,7 +435,7 @@
       });
       return "<tr><td>" + esc(person.name) + "</td><td>" + stat.weekendOffs + "</td><td>" + stat.weekdayOffs + "</td><td>" + stat.nights + "</td></tr>";
     }).join("");
-    return '<section class="card"><h2>최근 ' + months.length + '개월 분포</h2><p class="help">달을 이어서 만들수록 주말 오프와 평일 오프, 나이트가 사람들 사이에 비슷해집니다.</p><div class="table-scroll"><table class="fair"><thead><tr><th>이름</th><th>주말 오프</th><th>평일 오프</th><th>나이트</th></tr></thead><tbody>' + lines + "</tbody></table></div></section>";
+    return '<section class="card"><h2>최근 ' + months.length + '개월 분포</h2><div class="table-scroll"><table class="fair"><thead><tr><th>이름</th><th>주말 오프</th><th>평일 오프</th><th>나이트</th></tr></thead><tbody>' + lines + "</tbody></table></div></section>";
   }
 
   function renderShare() {
@@ -440,7 +443,7 @@
     const people = app.staff.filter(function (person) {
       return !ui.shareQuery || person.name.indexOf(ui.shareQuery) >= 0;
     });
-    return '<section class="card"><h2>근무자에게 보내기</h2><p class="help">컴퓨터가 꺼진 뒤에도 보려면 파일을 카카오톡으로 휴대폰에 보내 저장하세요. 그 파일은 인터넷 없이 열립니다. 링크는 이 컴퓨터가 켜져 있을 때만 됩니다.</p>' +
+    return '<section class="card"><h2>근무자에게 보내기</h2>' +
       '<div class="row"><button class="btn" type="button" data-act="download-all">전체 보기 파일</button><button class="btn-ghost" type="button" data-act="copy-all">전체 링크 복사</button></div>' +
       (ui.linkFallback ? '<textarea readonly style="width:100%;min-height:88px;margin-top:8px">' + esc(ui.linkFallback) + "</textarea>" : "") +
       '<div class="field" style="margin-top:12px"><span>사람 찾기</span><input id="sharefind" type="search" value="' + esc(ui.shareQuery) + '" placeholder="이름"></div>' +
@@ -455,18 +458,17 @@
   function renderEditor() {
     const days = buildDays(app.year, app.month);
     const now = new Date();
-    const tabs = ["설정", "인원", "오프", "근무표", "공유"];
     document.title = (app.wardName || "간호사 근무표") + " " + app.year + "년 " + app.month + "월";
-    root.innerHTML = '<main class="wrap"><header class="top"><div><p class="eyebrow">오늘 ' + (now.getMonth() + 1) + "월 " + now.getDate() + '일</p><h1>' + esc(app.wardName || "간호사 근무표") + '</h1><p class="sub">' + app.year + "년 " + app.month + '월</p></div>' +
+    root.innerHTML = '<main class="wrap tab-' + esc(ui.tab) + '"><header class="top"><div><p class="eyebrow">오늘 ' + (now.getMonth() + 1) + "월 " + now.getDate() + '일</p><h1>' + esc(app.wardName || "간호사 근무표") + '</h1><p class="sub">' + app.year + "년 " + app.month + '월</p></div>' +
       '<div class="month-switch"><button class="btn-tiny" type="button" data-act="prev-month">이전달</button><strong>' + app.month + '월</strong><button class="btn-tiny" type="button" data-act="next-month">다음달</button></div></header>' +
       (ui.flash ? '<div class="note">' + esc(ui.flash) + "</div>" : "") +
-      (ui.tab === "설정" ? renderSettings(days) : "") +
+      (ui.tab === "설정" ? renderSettings() : "") +
       (ui.tab === "인원" ? renderStaff() : "") +
       (ui.tab === "오프" ? renderOff(days) : "") +
       (ui.tab === "근무표" ? renderRoster(days) : "") +
       (ui.tab === "공유" ? renderShare() : "") +
-      "</main><nav class=\"nav\">" + tabs.map(function (tab) {
-        return '<button type="button" class="' + (ui.tab === tab ? "on" : "") + '" data-act="tab" data-tab="' + tab + '">' + tab + "</button>";
+      '</main><nav class="nav">' + TABS.map(function (tab) {
+        return '<button type="button" class="nav-' + tab.tone + (ui.tab === tab.id ? " on" : "") + '" data-act="tab" data-tab="' + tab.id + '">' + tab.id + "</button>";
       }).join("") + "</nav>";
   }
 
@@ -659,15 +661,21 @@
       save();
     } else if (act === "up") { moveStaff(id, -1); save(); }
     else if (act === "down") { moveStaff(id, 1); save(); }
-    else if (act === "sample") {
-      if (app.staff.length && !window.confirm("예시 인원으로 바꾸면 지금 인원과 이번 달 이후 표가 지워집니다. 바꿀까요?")) return;
-      const sample = [["김하늘", "선임"], ["이서연", "선임"], ["박지민", "5년차"], ["최수아", "5년차"], ["정예린", "4년차"], ["한도윤", "4년차"], ["오채원", "3년차"], ["윤시우", "3년차"], ["서지호", "2년차"], ["배민서", "2년차"], ["문하준", "1년차"], ["신유나", "신규"]];
-      app.staff = sample.map(function (item) { return { id: uid(), name: item[0], role: item[1] }; });
-      app.requests = {};
-      app.schedules = {};
+    else if (act === "add-off-person") {
+      const box = document.getElementById("off-person-name");
+      const name = ((box && box.value) || ui.offDraft || "").trim();
+      if (!name) { ui.flash = "이름을 입력해 주세요."; }
+      else {
+        if (!Array.isArray(app.offPeople)) app.offPeople = [];
+        if (app.offPeople.indexOf(name) < 0) app.offPeople.push(name);
+        ui.offDraft = "";
+        if (box) box.value = "";
+        save();
+      }
+    } else if (act === "remove-off-person") {
+      const name = button.dataset.name || "";
+      app.offPeople = (app.offPeople || []).filter(function (item) { return item !== name; });
       save();
-      ui.flash = "예시 12명을 넣었습니다. 오프를 신청한 뒤 근무표를 만드세요.";
-      ui.tab = "인원";
     } else if (act === "pick" || act === "focus") { ui.focusId = id; ui.showAll = act === "focus" ? false : ui.showAll; }
     else if (act === "toggle-off") {
       const dates = requestsFor(id);
@@ -675,6 +683,11 @@
       const at = dates.indexOf(iso);
       if (at >= 0) dates.splice(at, 1); else dates.push(iso);
       setRequests(id, dates.sort());
+      const person = findStaff(id);
+      if (person) {
+        if (!Array.isArray(app.offPeople)) app.offPeople = [];
+        if (dates.length && app.offPeople.indexOf(person.name) < 0) app.offPeople.push(person.name);
+      }
       save();
     } else if (act === "hide-holiday") {
       if (button.dataset.extra === "1") app.extraHolidays = app.extraHolidays.filter(function (item) { return item.date !== button.dataset.iso; });
@@ -715,24 +728,24 @@
     else if (act === "backup") {
       download(safeName((app.wardName || "근무표") + "_백업") + ".json", JSON.stringify(app), "application/json");
       ui.flash = "백업 파일을 저장했습니다.";
-    } else if (act === "pick-restore") { document.getElementById("restore").click(); return; }
-    else if (act === "reset") {
-      if (window.confirm("저장된 인원, 오프, 근무표를 모두 지울까요?")) {
-        localStorage.removeItem(KEY);
-        app = defaultApp();
-        ui.flash = "데이터를 지웠습니다.";
-      }
-    }
+    }     else if (act === "pick-restore") { document.getElementById("restore").click(); return; }
     renderEditor();
   }
 
   function onChange(event) {
     const el = event.target;
     if (el.id === "ward") app.wardName = el.value.trim();
-    else if (el.id === "wdtarget") app.weekdayTarget = el.value;
-    else if (el.id === "wetarget") app.weekendTarget = el.value;
     else if (el.dataset.shift) app.shifts[el.dataset.shift][el.dataset.part] = el.value;
-    else if (el.dataset.staff) {
+    else if (el.dataset.roleKind) {
+      const person = findStaff(el.dataset.roleKind);
+      if (person) {
+        const yearsInput = document.querySelector('[data-role-years="' + person.id + '"]');
+        person.role = roleFromParts(el.value, yearsInput ? yearsInput.value : roleYears(person.role));
+      }
+    } else if (el.dataset.roleYears) {
+      const person = findStaff(el.dataset.roleYears);
+      if (person) person.role = roleFromParts("년차", el.value);
+    } else if (el.dataset.staff) {
       const person = findStaff(el.dataset.staff);
       if (person) person[el.dataset.prop] = el.dataset.prop === "name" ? el.value.trim() : el.value;
     } else if (el.id === "restore" && el.files && el.files[0]) {
@@ -766,6 +779,8 @@
       renderEditor();
       const box = document.getElementById("sharefind");
       if (box) { box.focus(); box.selectionStart = box.selectionEnd = pos; }
+    } else if (event.target.id === "off-person-name") {
+      ui.offDraft = event.target.value;
     }
   }
 

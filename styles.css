@@ -141,12 +141,26 @@ input:focus, select:focus { border-color: var(--teal); }
   border: 0;
   background: transparent;
   border-radius: 12px;
-  padding: 6px 0;
+  padding: 8px 0;
   color: var(--muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
 }
-.nav button.on { background: var(--teal-soft); color: var(--teal); }
+.nav button.nav-roster { color: #0e6b66; }
+.nav button.nav-staff { color: #2a62b0; }
+.nav button.nav-off { color: #a84812; }
+.nav button.nav-settings { color: #5f675c; }
+.nav button.nav-share { color: #6b4ea0; }
+.nav button.nav-roster.on { background: #e5f3f1; color: #0e6b66; }
+.nav button.nav-staff.on { background: #e5ecf8; color: #243e78; }
+.nav button.nav-off.on { background: #ffe6d8; color: #a84812; }
+.nav button.nav-settings.on { background: #efece4; color: #3d4338; }
+.nav button.nav-share.on { background: #efe8f8; color: #6b4ea0; }
+.wrap.tab-근무표 .card { border-color: #cfe6e3; }
+.wrap.tab-인원 .card { border-color: #d5def0; }
+.wrap.tab-오프 .card { border-color: #f3d7c8; }
+.wrap.tab-설정 .card { border-color: #e3dfd4; }
+.wrap.tab-공유 .card { border-color: #e2d7f0; }
 
 .month-switch { display: flex; align-items: center; gap: 8px; }
 .month-switch strong { min-width: 92px; text-align: center; font-size: 16px; }
@@ -196,28 +210,60 @@ input:focus, select:focus { border-color: var(--teal); }
 .dow.sat { color: var(--sat); }
 .day {
   border: 1px solid var(--line);
-  background: transparent;
-  min-height: 74px;
-  padding: 6px 2px;
+  background: var(--card);
+  min-height: 78px;
+  padding: 8px 4px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
 }
-.day .n { font-weight: 800; font-size: 13px; }
+.day .n { font-weight: 900; font-size: 15px; letter-spacing: -0.02em; }
+.day.readable .n { font-size: 16px; }
 .day.sun .n, .day.holi .n { color: var(--sun); }
 .day.sat .n { color: var(--sat); }
 .day.out { visibility: hidden; }
-.day.today { outline: 2px solid var(--teal); }
+.day.today { outline: 2px solid var(--teal); outline-offset: -1px; }
 .day small { color: var(--muted); font-size: 10px; line-height: 1.2; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .badge {
-  border-radius: 999px;
-  padding: 3px 6px;
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1.2;
+  border-radius: 10px;
+  padding: 5px 8px;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.15;
   white-space: nowrap;
+  min-width: 2.2em;
+  text-align: center;
 }
+.badge.big { font-size: 14px; padding: 6px 10px; min-width: 2.6em; }
+.shift-label { width: 64px; }
+.shift-label.D { color: var(--d); }
+.shift-label.E { color: var(--e); }
+.shift-label.N { color: var(--n); }
+.off-people-row { align-items: flex-start; }
+.off-people-row input { flex: 0 1 140px; }
+.off-people-list { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 140px; }
+.off-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--req-bg);
+  color: var(--req);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-weight: 800;
+}
+.off-chip button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0 2px;
+  font-size: 14px;
+  line-height: 1;
+}
+.muted-inline { color: var(--muted); font-size: 13px; }
+.staff-item .years { width: 72px; }
 .badge.D { background: var(--d-bg); color: var(--d); }
 .badge.E { background: var(--e-bg); color: var(--e); }
 .badge.N { background: var(--n-bg); color: var(--n); }
@@ -302,14 +348,18 @@ td button, th { border: 0; background: transparent; width: 100%; font-weight: 80
 @media (max-width: 720px) {
   h1 { font-size: 22px; }
   .grid-2, .stats { grid-template-columns: 1fr; }
-  .day { min-height: 68px; }
+  .day { min-height: 72px; }
+  .day.readable .n { font-size: 14px; }
+  .badge { font-size: 12px; padding: 4px 6px; }
+  .badge.big { font-size: 13px; }
   .wrap { padding-left: 8px; padding-right: 8px; }
   .card { padding: 10px; }
   .cal, .cal.all { gap: 3px; }
-  .day.all { padding: 3px 1px; border-radius: 8px; gap: 1px; }
-  .day.all .n { font-size: 12px; }
+  .day.all { padding: 4px 2px; border-radius: 8px; gap: 2px; }
+  .day.all .n { font-size: 13px; }
   .day.all small { display: none; }
-  .day.all .badge { padding: 1px 2px; font-size: 9px; }
+  .day.all .badge { padding: 2px 3px; font-size: 10px; }
   .who-block { margin-top: 3px; gap: 1px; }
   .day.all .who { font-size: 10px; padding: 1px 1px; border-radius: 4px; line-height: 1.3; }
+  .nav button { font-size: 11px; }
 }

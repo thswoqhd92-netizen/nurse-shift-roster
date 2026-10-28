@@ -180,11 +180,12 @@
       we = Math.round(avg * 0.75);
       wd = wdDays ? Math.round((avg * days - we * weDays) / wdDays) : we;
     }
-    wd = clamp(Math.round(wd), 1, Math.max(1, staffCount));
-    we = clamp(Math.round(we), 1, Math.max(1, staffCount));
+    const floorHead = staffCount >= 3 ? 3 : Math.max(1, staffCount);
+    wd = clamp(Math.round(wd), floorHead, Math.max(floorHead, staffCount));
+    we = clamp(Math.round(we), floorHead, Math.max(floorHead, staffCount));
     if (!custom && wd <= we && staffCount > 1) {
       if (wd < staffCount) wd += 1;
-      if (wd <= we) we = Math.max(1, wd - 1);
+      if (wd <= we) we = Math.max(floorHead, wd - 1);
     }
     const maxN = Math.max(1, Math.floor((6 * Math.max(1, staffCount)) / Math.max(1, days)));
     const perDay = weekendLike.map(function (isWeekend) {
@@ -197,12 +198,19 @@
     total = clamp(total, 0, staffCount);
     if (total <= 0) return { D: 0, E: 0, N: 0, total: 0 };
     if (total === 1) return { D: 1, E: 0, N: 0, total: 1 };
-    if (total === 2) return { D: 1, E: 0, N: 1, total: 2 };
+    if (total === 2) return { D: 1, E: 1, N: 0, total: 2 };
     let nights = clamp(Math.round(total * 0.28), 1, Math.min(maxN, total - 2));
-    const rest = total - nights;
-    const day = Math.ceil(rest / 2);
-    const evening = rest - day;
-    return { D: day, E: evening, N: nights, total: total };
+    let rest = total - nights;
+    let day = Math.max(1, Math.ceil(rest / 2));
+    let evening = rest - day;
+    if (evening < 1) {
+      evening = 1;
+      day = Math.max(1, rest - 1);
+    }
+    if (day + evening + nights !== total) {
+      nights = total - day - evening;
+    }
+    return { D: day, E: evening, N: Math.max(1, nights), total: total };
   }
 
   function offPlanForPerson(baseOffTarget, requestSet, weekendLike, history, avgWeekendOffs) {
@@ -245,7 +253,9 @@
       if (state.workStreak === 0) score += 3;
       else if (state.last !== "N") score -= 2;
       if ((person.histNights || 0) > ctx.avgHistNights + 1) score -= 3;
-      if (state.last !== "N" && state.nights >= 3 && ctx.dayProgress < 0.75) score -= 18;
+      if (state.last !== "N" && state.nights >= 4 && ctx.dayProgress < 0.55) score -= 10;
+      if (ctx.dayProgress > 0.6 && state.nights < 4) score += 12;
+      if (ctx.dayProgress > 0.75 && state.nights < 5) score += 8;
     }
     if (person.role === "선임" || person.role === "5년차") {
       const onShift = ctx.roleOnShift(shift, person.role);
@@ -575,6 +585,42 @@
         }
       }
 
+      function canTakeBare(i, shift) {
+        if (requestSets[i].has(day)) return false;
+        if (reason[i] === "request" || reason[i] === "rest") return false;
+        return !!canAssign(states[i], shift);
+      }
+      function pickForEmpty(shift, preferOff) {
+        const pool = [];
+        for (let i = 0; i < staff.length; i++) {
+          if (preferOff && assignment[i] !== "OFF") continue;
+          if (!preferOff && (assignment[i] === "OFF" || assignment[i] === shift)) continue;
+          if (!canTake(i, shift) && !canTakeBare(i, shift)) continue;
+          if (!preferOff && countShift(assignment[i]) <= 1) continue;
+          pool.push(i);
+        }
+        if (!pool.length) return false;
+        pool.sort(function (a, b) {
+          const coverA = canTake(a, shift) ? 10 : 0;
+          const coverB = canTake(b, shift) ? 10 : 0;
+          return coverB - coverA ||
+            workDesire(states[b], staff[b], day, days, input.weekendLike, requestSets[b], rng) -
+            workDesire(states[a], staff[a], day, days, input.weekendLike, requestSets[a], rng);
+        });
+        assignment[pool[0]] = shift;
+        reason[pool[0]] = "work";
+        return true;
+      }
+      function fillEmptyShifts() {
+        ["N", "D", "E"].forEach(function (shift) {
+          if (countShift(shift) > 0) return;
+          if (pickForEmpty(shift, true)) return;
+          if (pickForEmpty(shift, false)) return;
+        });
+      }
+      fillEmptyShifts();
+      fillEmptyShifts();
+
       ["선임", "5년차"].forEach(function (role) {
         if (!staff.some(function (person) { return person.role === role; })) return;
         if (roleOnDay(role)) {
@@ -639,6 +685,8 @@
         });
       }
 
+      fillEmptyShifts();
+
       for (let i = 0; i < staff.length; i++) {
         grid[i][day] = assignment[i];
         applyShift(states[i], assignment[i], input.weekendLike[day], requestSets[i].has(day));
@@ -695,13 +743,12 @@
         soft.push(dateLabel(day) + " 근무하는 5년차가 없습니다.");
         penalty += 70;
       }
-      if (staff.length >= 8) {
+      if (staff.length >= 3) {
         SHIFTS.forEach(function (shift) {
-          const goal = input.dayTargets[day][shift];
-          if (goal > 0 && bucket[shift] === 0) {
+          if (bucket[shift] === 0) {
             const label = shift === "D" ? "데이" : shift === "E" ? "이브닝" : "나이트";
             soft.push(dateLabel(day) + " " + label + " 근무가 비어 있습니다.");
-            penalty += 25;
+            penalty += 220;
           }
         });
       }
@@ -858,7 +905,7 @@
       dayTargets: prepared.dayTargets,
       avgHistNights: prepared.avgHistNights,
     };
-    const restarts = input.restarts || (input.staff.length > 200 ? 6 : input.staff.length > 80 ? 10 : 16);
+    const restarts = input.restarts || (input.staff.length > 200 ? 8 : input.staff.length > 80 ? 14 : 28);
     let best = null;
     const seed = input.seed || 20261025;
     for (let restart = 0; restart < restarts; restart++) {
