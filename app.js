@@ -385,7 +385,6 @@
 
   function renderRoster(days) {
     const key = currentKey();
-    const report = currentReport();
     let body = renderOffPeopleCard();
     if (!app.schedules[key]) {
       return body + '<section class="card"><h2>근무표</h2><button class="btn wide" type="button" data-act="generate">' + (ui.busy ? "만드는 중" : "근무표 만들기") + "</button></section>";
