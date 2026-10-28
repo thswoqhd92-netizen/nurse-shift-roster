@@ -35,7 +35,7 @@
 
   const root = document.getElementById("app");
   let app = load();
-  const ui = { tab: "근무표", flash: "", busy: false, focusId: "", showAll: false, editGrid: false, query: "", showEveryRow: false, moreWarn: false, shareQuery: "", linkFallback: "", offDraft: "", offDateDraft: "", editingYearsId: "" };
+  const ui = { tab: "근무표", flash: "", busy: false, focusId: "", showAll: false, editGrid: false, query: "", showEveryRow: false, moreWarn: false, showFair: false, shareQuery: "", linkFallback: "", offDraft: "", offDateDraft: "", editingYearsId: "" };
   let reportStamp = "";
   let reportCache = null;
 
@@ -470,7 +470,12 @@
       });
       return "<tr><td>" + esc(person.name) + "</td><td>" + stat.weekendOffs + "</td><td>" + stat.weekdayOffs + "</td><td>" + stat.nights + "</td></tr>";
     }).join("");
-    return '<section class="card"><h2>최근 ' + months.length + '개월 분포</h2><div class="table-scroll"><table class="fair"><thead><tr><th>이름</th><th>주말 오프</th><th>평일 오프</th><th>나이트</th></tr></thead><tbody>' + lines + "</tbody></table></div></section>";
+    if (!ui.showFair) {
+      return '<section class="card"><button class="btn-ghost wide" type="button" data-act="toggle-fair">상세보기</button></section>';
+    }
+    return '<section class="card"><div class="person-head"><h2 style="margin:0">최근 ' + months.length + '개월 분포</h2>' +
+      '<button class="btn-tiny" type="button" data-act="toggle-fair">접기</button></div>' +
+      '<div class="table-scroll" style="margin-top:10px"><table class="fair"><thead><tr><th>이름</th><th>주말 오프</th><th>평일 오프</th><th>나이트</th></tr></thead><tbody>' + lines + "</tbody></table></div></section>";
   }
 
   function renderShare() {
@@ -762,6 +767,7 @@
     else if (act === "edit-grid") ui.editGrid = !ui.editGrid;
     else if (act === "every-row") ui.showEveryRow = true;
     else if (act === "more-warn") ui.moreWarn = !ui.moreWarn;
+    else if (act === "toggle-fair") ui.showFair = !ui.showFair;
     else if (act === "cycle") {
       const grid = app.schedules[currentKey()] && app.schedules[currentKey()][id];
       if (grid) {
